@@ -23,23 +23,22 @@ module Test.Main where
 
 import Prelude
 
-import Cache (CACHE, SimpleConn, CacheConnOpts, newConn, host, port, socketKeepAlive, db)
-import Control.Monad.Aff (Aff, launchAff_)
-import Control.Monad.Aff.Class (liftAff)
-import Control.Monad.Aff.Console (CONSOLE)
-import Control.Monad.Eff (Eff)
-import Control.Monad.Eff.Class (liftEff)
-import Control.Monad.Eff.Exception (throwException)
+import Cache (SimpleConn, SimpleConnOpts, db, host, newConn, port, socketKeepAlive)
 import Control.Monad.Except.Trans (runExceptT)
 import Control.Monad.Reader.Trans (runReaderT)
 import Control.Monad.State.Trans (runStateT)
 import Data.Either (Either(..))
 import Data.Options ((:=), Options)
-import Data.StrMap (StrMap, singleton)
+import Debug.Trace (spy)
+import Effect (Effect)
+import Effect.Aff (Aff, launchAff_)
+import Effect.Aff.Class (liftAff)
+import Effect.Class (liftEffect)
+import Effect.Exception (throwException)
+import Foreign.Object (Object, singleton)
 import Presto.Backend.Flow (BackendFlow, log)
 import Presto.Backend.Interpreter (BackendRuntime(..), Connection(..), runBackend)
-import Presto.Core.Types.API (Request(..))
-import Debug.Trace (spy)
+import Presto.Core.Types.API (Request)
 
 type Config = {
     test :: Boolean
@@ -51,35 +50,35 @@ newtype FooState = FooState { test :: Boolean}
 
 fooState = FooState { test : true}
 
-apiRunner :: ∀ e. Request → Aff e String
+apiRunner :: Request → Aff String
 apiRunner r = pure "add working api runner!"
 
-redisOptions :: Options CacheConnOpts
+redisOptions :: Options SimpleConnOpts
 redisOptions = host := "127.0.0.1"
          <> port := 6379
          <> db := 0
          <> socketKeepAlive := true
 
-connections :: Connection -> StrMap Connection
+connections :: Connection -> Object Connection
 connections conn = singleton "DB" conn
 
-logRunner :: forall e a. String -> a -> Aff _ Unit
-logRunner tag value = pure (spy tag) *> pure (spy value) *> pure unit
+logRunner :: forall a. String -> a -> Aff Unit
+logRunner tag value = pure (spy "tag:" tag) *> pure (spy "value:" value) *> pure unit
 
 foo :: BackendFlow FooState Config Unit
 foo = log "foo" "ran" *> pure unit
 
-tryRedisConn :: forall e. Options CacheConnOpts -> Aff _ SimpleConn
+tryRedisConn :: Options SimpleConnOpts -> Aff SimpleConn
 tryRedisConn opts = do
     eCacheConn <- newConn opts
     case eCacheConn of
          Right c -> pure c
-         Left err -> liftEff $ throwException err
+         Left err -> liftEffect $ throwException err
 
-main :: forall t1. Eff _ Unit
+main :: Effect Unit
 main = launchAff_ start *> pure unit
 
-start :: forall t1. Aff _ Unit
+start :: Aff Unit
 start = do
     conn <- tryRedisConn redisOptions
     let backendRuntime = BackendRuntime apiRunner (connections (Redis conn)) logRunner
