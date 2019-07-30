@@ -19,26 +19,25 @@
     "test",
     "tests"
   ],
+  "resolutions": {
+    "purescript-typelevel-prelude": "^3.0.0",
+    "purescript-foreign-object": "^2.0.0",
+    "purescript-test-unit": "^15.0.0",
+    "purescript-foreign-generic": "^10.0.0",
+    "purescript-quickcheck": "^6.0.0",
+    "purescript-record": "^2.0.0"
+  },
   "dependencies": {
-    "purescript-express": "85ee5261a6cf3e8e2b5cd6b167f6c0fdd29d6f14",
-    "purescript-presto": "67dbec28260b39407eb528542f7fd7dbc32f0536",
-    "purescript-sequelize": "https://github.com/juspay/purescript-sequelize.git#cfc0c9245322520115eca7b2c1fa0d6bbcebf315",
-    "purescript-body-parser": "https://github.com/juspay/purescript-body-parser.git#0.1.0",
-    "purescript-uuid": "^4.0.0",
-    "purescript-redis": "https://github.com/juspay/purescript-redis.git#a7e76a31eaee72bb17d80b694cb20f620a03984d",
-    "purescript-now": "3.0.0",
-    "purescript-node-fs": "^4.0.0",
-    "purescript-node-process": "^5.0.0"
+    "purescript-sequelize": "https://github.com/juspay/purescript-sequelize.git#compiler/0.12",
+    "purescript-body-parser": "https://github.com/juspay/purescript-body-parser.git#0.12.upgrade",
+    "purescript-redis": "https://github.com/NikithShetty/purescript-redis.git#0.12.upgrade",
+    "purescript-uuid": "^6.0.0",
+    "purescript-node-process": "^7.0.0",
+    "purescript-now": "^4.0.0",
+    "purescript-node-fs": "^5.0.1"
   },
   "devDependencies": {
-    "purescript-psci-support": "^3.0.0",
-    "purescript-debug": "3.0.0"
-  },
-  "version": "0.0.1",
-  "resolutions": {
-    "purescript-aff": "~4.0.0",
-    "purescript-foreign-generic": "^6.0.0",
-    "purescript-express": "85ee5261a6cf3e8e2b5cd6b167f6c0fdd29d6f14",
-    "purescript-test-unit": "^13.0.0"
+    "purescript-psci-support": "^4.0.0",
+    "purescript-debug": "^4.0.0"
   }
 }

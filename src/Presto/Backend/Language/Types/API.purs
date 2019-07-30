@@ -1,5 +1,6 @@
 module Presto.Backend.Types.API
-  ( class RestEndpoint
+  ( 
+    class RestEndpoint
   , ErrorPayload(..)
   , ErrorResponse
   , Method(..)
@@ -21,11 +22,10 @@ module Presto.Backend.Types.API
 
 import Prelude
 
-import Data.Foreign (F)
-import Data.Foreign.Class (class Decode, class Encode)
-import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
+import Foreign (F)
+import Foreign.Generic (class Decode, class Encode, class GenericDecode, class GenericEncode)
 import Presto.Core.Utils.Encoding (defaultDecode, defaultDecodeJSON, defaultEncode, defaultEncodeJSON, defaultEnumDecode, defaultEnumEncode)
 
 class RestEndpoint a b | a -> b, b -> a where

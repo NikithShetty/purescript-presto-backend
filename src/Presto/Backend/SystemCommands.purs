@@ -23,10 +23,10 @@ module Presto.Backend.SystemCommands where
 
 import Prelude
 
-import Control.Monad.Aff (Aff)
-import Control.Monad.Aff.Compat (EffFnAff, fromEffFnAff)
+import Effect.Aff (Aff)
+import Effect.Aff.Compat (EffectFnAff, fromEffectFnAff)
 
-foreign import runSysCmdImpl :: forall e. String -> EffFnAff e String
+foreign import runSysCmdImpl :: String -> EffectFnAff String
 
-runSysCmd :: forall eff. String -> Aff eff String
-runSysCmd = fromEffFnAff <<< runSysCmdImpl
+runSysCmd :: String -> Aff String
+runSysCmd = fromEffectFnAff <<< runSysCmdImpl
