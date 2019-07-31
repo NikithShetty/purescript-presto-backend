@@ -22,10 +22,10 @@ module Presto.Core.Types.API
 import Prelude
 
 import Data.Generic.Rep (class Generic)
-import Foreign (F)
+import Foreign (F, Foreign)
 import Foreign.Class (class Decode, class Encode)
+import Foreign.Generic (encodeJSON)
 import Foreign.Generic.Class (class GenericDecode, class GenericEncode)
-
 import Presto.Core.Utils.Encoding (defaultDecode, defaultEncode, defaultDecodeJSON, defaultEncodeJSON)
 
 class RestEndpoint a b | a -> b, b -> a where
@@ -83,11 +83,7 @@ newtype Response a = Response
 responsePayload :: forall a. Response a -> a
 responsePayload (Response r) = r.response
 
-newtype ErrorPayload = ErrorPayload
-  { error :: Boolean
-  , errorMessage :: String
-  , userMessage :: String
-  }
+newtype ErrorPayload = ErrorPayload Foreign
 
 type ErrorResponse = Response ErrorPayload
 
@@ -126,7 +122,7 @@ instance encodeErrorPayload :: Encode ErrorPayload where
 instance decodeErrorPayload :: Decode ErrorPayload where
   decode = defaultDecode
 instance showErrorPayload :: Show ErrorPayload where
-  show (ErrorPayload payload) = payload.userMessage
+  show = encodeJSON
 
 derive instance genericResponse :: Generic (Response a) _
 instance decodeResponseG :: Decode a => Decode (Response a) where

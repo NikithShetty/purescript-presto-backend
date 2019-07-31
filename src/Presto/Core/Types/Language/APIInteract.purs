@@ -6,10 +6,10 @@ import Prelude
 
 import Control.Monad.Except (runExcept)
 import Data.Either (Either(..))
+import Foreign (unsafeToForeign)
 import Foreign.Class (class Decode, class Encode, decode, encode)
-
-import Presto.Core.Types.Language.Interaction (Interaction, request)
 import Presto.Core.Types.API (class RestEndpoint, ErrorPayload(..), ErrorResponse, Response(..), Headers, decodeResponse, makeRequest)
+import Presto.Core.Types.Language.Interaction (Interaction, request)
 import Presto.Core.Utils.Encoding (defaultDecodeJSON)
 
 -- Special interact function for API.
@@ -27,7 +27,7 @@ apiInteract a headers = do
                        Left y -> Response
                                     { code : 0
                                     , status : ""
-                                    , response : ErrorPayload
+                                    , response : ErrorPayload $ unsafeToForeign
                                                     { error: true
                                                     , errorMessage: show x <> "\n" <> show y
                                                     , userMessage: "Unknown error"
