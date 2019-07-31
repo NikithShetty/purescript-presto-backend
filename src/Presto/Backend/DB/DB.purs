@@ -26,32 +26,43 @@ module Presto.Backend.DB
     getModelByName,
     findOne,
     findAll,
+    findAndCountAll,
     -- query,
+    bCreate',
     create,
     createWithOpts,
     update,
-    update',
     delete
   ) where
 
 import Prelude
 
+import Control.Monad.Error.Class (throwError)
+import Control.Monad.Except (runExcept)
 import Data.Bifunctor (bimap)
-import Data.Either (Either(..))
+import Data.Either (Either(..), hush)
 import Data.Function.Uncurried (Fn2, runFn2)
 import Data.Maybe (Maybe(..), maybe)
-import Data.Options (Options, assoc, opt)
+import Data.Newtype (unwrap)
+import Data.Options (Options, assoc, opt, (:=))
 import Effect (Effect)
 import Effect.Aff (Aff, Error, attempt, error)
 import Effect.Class (liftEffect)
-import Sequelize.CRUD (updateModel)
+import Foreign (readString)
+import Foreign.Object (lookup)
+import Sequelize.CRUD (bulkCreate, findAndCountAll')
 import Sequelize.CRUD.Create as Seql
 import Sequelize.CRUD.Destroy as Destroy
 import Sequelize.CRUD.Read (findAll', findOne')
-import Sequelize.Class (class Model, modelName)
+import Sequelize.CRUD.Update (updateModel')
+import Sequelize.CRUD.Utils (mapInstanceToModel)
+import Sequelize.Class (class Model, class Submodel, modelName)
+import Sequelize.Connection (getConnOpts)
 import Sequelize.Instance (instanceToModelE)
+import Sequelize.Query.Options (returning, useMaster)
 import Sequelize.Types (Conn, ModelOf)
 import Type.Proxy (Proxy(..))
+import Unsafe.Coerce (unsafeCoerce)
 
 foreign import _getModelByName :: forall a. Fn2 Conn String (Effect (ModelOf a))
 
@@ -100,6 +111,17 @@ findAll conn options = do
                 Left err -> pure <<< Left $ error $ show err
         Left err -> pure $ Left $ error $ show err
 
+findAndCountAll :: forall a. Model a => Conn -> Options a
+  -> Aff (Either Error { count :: Int, rows :: Array a})
+findAndCountAll conn options = do
+    model <- getModelByName conn :: (Aff (Either Error (ModelOf a)))
+    case model of
+        Right m -> do
+            val <- attempt $ findAndCountAll' m options
+            case val of
+                Right arrayRec -> pure <<< Right $ arrayRec
+                Left err -> pure <<< Left $ error $ show err
+        Left err -> pure $ Left $ error $ show err
 
 -- query :: forall a. Conn -> String -> Aff (Either Error (Array a))
 -- query conn rawq = do
@@ -123,42 +145,40 @@ createWithOpts conn entity options = do
 create :: forall a. Model a => Conn -> a -> Aff (Either Error (Maybe a))
 create conn entity = createWithOpts conn entity mempty
 
-update :: forall a. Model a => Conn -> Options a -> Options a -> Aff (Either Error (Array a))
-update conn updateValues whereClause = do
-    model <- getModelByName conn :: (Aff (Either Error (ModelOf a)))
-    case model of
-        Right m -> do
-            val <- update' conn updateValues whereClause
-            recs <- findAll' m (whereClause <> useMasterClause)
-            case val of
-                Right _ -> pure <<< Right $ recs
-                Left err -> pure <<< Left $ err
-        Left err -> pure $ Left $ error $ show err
+bulkCreate':: forall a b. Submodel a b => ModelOf a -> Array b->  Aff (Array b)
+bulkCreate' m e = do
+  rows <- bulkCreate m e
+  case mapInstanceToModel rows of
+    Right v -> pure v
+    Left err -> (throwError <<< error <<< show) err
 
-update' :: forall a. Model a => Conn -> Options a -> Options a -> Aff (Either Error Int)
-update' conn updateValues whereClause = do
+bCreate' :: forall a. Model a => Conn -> Array a -> Aff (Either Error (Array a))
+bCreate' conn entity = do
     model <- getModelByName conn :: (Aff (Either Error (ModelOf a)))
     case model of
         Right m -> do
-            val <- attempt $ updateModel m updateValues whereClause
+            val <- attempt $ bulkCreate' m entity
             case val of
-                Right {affectedCount} -> pure <<< Right $ affectedCount
+                Right rec -> pure $ Right rec
                 Left err -> pure <<< Left $ error $ show err
         Left err -> pure $ Left $ error $ show err
 
--- updateE :: forall a. Model a => Options a -> Options a -> FlowES Configs _ (Array a)
--- updateE updateValues whereClause = do
---   { conn } <- get
---   model <- getModelByName :: (FlowES Configs _ (ModelOf a))
---   let mName = modelName (Proxy :: Proxy a)
---   lift $ ExceptT $ doAff do
---     val <- attempt $ updateModel model updateValues whereClause
---     recs <- Read.findAll' model whereClause
---     case val of
---       Right { affectedCount : 0, affectedRows } -> pure <<< Left $ DBError { message : "No record updated " <> mName }
---       Right { affectedCount , affectedRows : Nothing } -> pure <<< Left $ DBError { message : "No record updated " <> mName }
---       Right { affectedCount , affectedRows : Just x } -> pure <<< Right $ recs
---       Left err -> pure <<< Left $ DBError { message : message err }
+update :: forall a. Model a => Conn -> Options a -> Options a -> Aff (Either Error (Array a))
+update conn updateValues whereC = do
+    let whereClause = addReturningClause conn whereC
+    model <- getModelByName conn :: (Aff (Either Error (ModelOf a)))
+    case model of
+        Right m -> do
+            val <- attempt $ updateModel' m updateValues whereClause
+            case getDialect conn, val of
+               _, Right {affectedCount : 0, affectedRows } -> pure <<< Right $ []
+               Just "postgres" , Right {affectedCount , affectedRows : Nothing } -> pure <<< Right $ []
+               _ , Right {affectedCount , affectedRows : Nothing } -> do
+                    recs <- findAll' m $ whereClause <> useMaster := true
+                    pure <<< Right $ recs
+               _, Right {affectedCount , affectedRows : Just x } -> pure <<< Right $ x
+               _, Left err -> pure <<< Left $ error $ show err
+        Left err -> pure $ Left $ error $ show err
 
 delete :: forall a. Model a => Conn -> Options a -> Aff (Either Error Int)
 delete conn whereClause = do
@@ -169,5 +189,13 @@ delete conn whereClause = do
       val <- attempt $ Destroy.delete m whereClause
       case val of
         Right { affectedCount : count } -> pure <<< Right $ count
-        Left err ->pure $ Left $ error $ show err
+        Left err -> pure $ Left $ error $ show err
     Left err -> pure $ Left $ error $ show err  
+
+addReturningClause :: forall a. Model a => Conn -> Options a -> Options a
+addReturningClause conn whereClause = case getDialect conn of
+        Just "postgres" -> returning := true <> whereClause
+        _ -> whereClause
+
+getDialect :: Conn -> Maybe String
+getDialect conn = maybe Nothing (hush <<< runExcept <<< readString) (lookup "dialect" $ unsafeCoerce <<< unwrap <<< getConnOpts $ conn)

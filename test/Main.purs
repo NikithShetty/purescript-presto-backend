@@ -28,6 +28,7 @@ import Control.Monad.Except.Trans (runExceptT)
 import Control.Monad.Reader.Trans (runReaderT)
 import Control.Monad.State.Trans (runStateT)
 import Data.Either (Either(..))
+import Data.Interval.Duration.Iso (Error)
 import Data.Options ((:=), Options)
 import Debug.Trace (spy)
 import Effect (Effect)
@@ -36,7 +37,7 @@ import Effect.Aff.Class (liftAff)
 import Effect.Class (liftEffect)
 import Effect.Exception (throwException)
 import Foreign.Object (Object, singleton)
-import Presto.Backend.Flow (BackendFlow, log)
+import Presto.Backend.Flow (BackendException, BackendFlow, LogLevel, log)
 import Presto.Backend.Interpreter (BackendRuntime(..), Connection(..), runBackend)
 import Presto.Core.Types.API (Request)
 
@@ -62,11 +63,11 @@ redisOptions = host := "127.0.0.1"
 connections :: Connection -> Object Connection
 connections conn = singleton "DB" conn
 
-logRunner :: forall a. String -> a -> Aff Unit
-logRunner tag value = pure (spy "tag:" tag) *> pure (spy "value:" value) *> pure unit
+logRunner :: forall a. LogLevel -> String -> a -> Aff Unit
+logRunner level tag value = pure (spy "tag:" tag) *> pure (spy "value:" value) *> pure unit
 
-foo :: BackendFlow FooState Config Unit
-foo = log "foo" "ran" *> pure unit
+foo :: BackendFlow FooState Config (BackendException Error) Unit
+foo = log "info" "foo" "ran" *> pure unit
 
 tryRedisConn :: Options SimpleConnOpts -> Aff SimpleConn
 tryRedisConn opts = do

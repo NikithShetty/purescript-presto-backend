@@ -37,15 +37,15 @@ import Data.Exists (runExists)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
 import Effect.Aff (Aff, error, forkAff)
+import Effect.Aff.Class (liftAff)
 import Effect.Class (liftEffect)
-import Effect.Exception (Error)
 import Foreign.Object (Object, lookup)
-import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
+import Presto.Backend.Flow (BackendException(..), BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..), LogLevel)
 import Presto.Backend.SystemCommands (runSysCmd)
 import Presto.Core.Language.Runtime.API (APIRunner, runAPIInteraction)
 import Sequelize.Types (Conn)
 
-type InterpreterMT rt st err eff a = R.ReaderT rt (S.StateT st (E.ExceptT err Aff)) a
+type InterpreterMT rt st err a = R.ReaderT rt (S.StateT st (E.ExceptT err (Aff))) a
 
 type Cache = {
     name :: String
@@ -57,21 +57,14 @@ type DB = {
   , connection :: Conn
 }
 
-type LogRunner = forall a. String -> a -> Aff Unit
+type LogRunner = forall a. LogLevel -> String -> a -> Aff Unit
 
 data Connection = Sequelize Conn | Redis SimpleConn
 
 data BackendRuntime = BackendRuntime APIRunner (Object Connection) LogRunner
 
-forkF :: forall eff rt st a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT rt st (Tuple Error st) eff Unit
-forkF runtime flow = do
-  st <- R.lift $ S.get
-  rt <- R.ask
-  let m = E.runExceptT ( S.runStateT ( R.runReaderT ( runBackend runtime flow ) rt) st)
-  R.lift $ S.lift $ E.lift $ forkAff m *> pure unit
 
-
-interpret :: forall st rt s eff a.  BackendRuntime -> BackendFlowCommandsWrapper st rt s a -> InterpreterMT rt st (Tuple Error st) eff a
+interpret :: forall st rt s a err.  BackendRuntime -> BackendFlowCommandsWrapper st rt err s a -> InterpreterMT rt st (BackendException err) a
 interpret _ (Ask next) = R.ask >>= (pure <<< next)
 
 interpret _ (Get next) = R.lift (S.get) >>= (pure <<< next)
@@ -80,7 +73,7 @@ interpret _ (Put d next) = R.lift (S.put d) *> (pure <<< next) d
 
 interpret _ (Modify d next) = R.lift (S.modify d) *> S.get >>= (pure <<< next)
 
-interpret _ (ThrowException errorMessage next) = R.lift S.get >>= (R.lift <<< S.lift <<< E.ExceptT <<<  pure <<< Left <<< Tuple (error errorMessage)) >>= pure <<< next
+interpret _ (ThrowException err next) = (R.lift $ S.lift $ E.ExceptT $ Left <$> (pure $ err)) >>= pure <<< next
 
 interpret _ (DoAff aff nextF) = (R.lift $ S.lift $ E.lift aff) >>= (pure <<< nextF)
 
@@ -148,14 +141,18 @@ interpret (BackendRuntime a connections c) (GetCacheConn cacheName next) = do
   maybeCache <- pure $ lookup cacheName connections
   case maybeCache of
     Just (Redis cache) -> (pure <<< next) cache
-    Just _ -> interpret (BackendRuntime a connections c) (ThrowException "No DB found" next)
-    Nothing -> interpret (BackendRuntime a connections c) (ThrowException "No DB found" next)
+    Just _ -> interpret (BackendRuntime a connections c) (ThrowException (StringException $ error "No Cache found") next)
+    Nothing -> interpret (BackendRuntime a connections c) (ThrowException (StringException $ error "No Cache found") next)
 
 interpret _ (FindOne model next) = (pure <<< next) model
 
 interpret _ (FindAll models next) = (pure <<< next) models
 
-interpret _ (Query models next) = (pure <<< next) models
+interpret _ (FindAndCountAll models next) = (pure <<< next) models
+
+interpret _ (BulkCreate model next) = (pure <<< next) model
+
+-- interpret _ (Query models next) = (pure <<< next) models
 
 interpret _ (Create model next) = (pure <<< next) model
 
@@ -167,21 +164,35 @@ interpret ((BackendRuntime a connections c)) (GetDBConn dbName next) = do
   maybedb <- pure $ lookup dbName connections
   case maybedb of
     Just (Sequelize db) -> (pure <<< next) db
-    Just _ -> interpret (BackendRuntime a connections c) (ThrowException "No DB found" next)
-    Nothing -> interpret (BackendRuntime a connections c) (ThrowException "No DB found" next)
+    Just _ -> interpret (BackendRuntime a connections c) (ThrowException (StringException $ error "No DB Found") next)
+    Nothing -> interpret (BackendRuntime a connections c) (ThrowException (StringException $ error "No DB Found") next)
 
 
 interpret (BackendRuntime apiRunner _ _) (CallAPI apiInteractionF nextF) = do
   R.lift $ S.lift $ E.lift $ runAPIInteraction apiRunner apiInteractionF
     >>= (pure <<< nextF)
 
-interpret (BackendRuntime _ _ logRunner) (Log tag message next) = (R.lift ( S.lift ( E.lift (logRunner tag message)))) *> pure next
+interpret (BackendRuntime _ _ logRunner) (Log level tag message next) = (R.lift ( S.lift ( E.lift (logRunner level tag message)))) *> pure next
 
-interpret r (Fork flow nextF) = forkF r flow >>= (pure <<< nextF)
+interpret r (Fork flow nextF) = do
+  st <- R.lift $ S.get
+  rt <- R.ask
+  let m = E.runExceptT ( S.runStateT ( R.runReaderT ( runBackend r flow ) rt) st)
+  R.lift $ S.lift $ E.lift $ forkAff m *> (pure <<< nextF) unit
+
+interpret r (Attempt flow nextF) = do
+  st <- R.lift $ S.get
+  rt <- R.ask
+  let m = E.runExceptT ( S.runStateT ( R.runReaderT ( runBackend r flow ) rt) st)
+  result <- R.lift $ S.lift $ E.lift $ liftAff m
+  (pure <<< nextF) $ do
+      case result of
+        Right (Tuple x _) ->  Right x
+        Left b -> Left b
 
 interpret _ (RunSysCmd cmd next) = R.lift $ S.lift $ E.lift $ runSysCmd cmd >>= (pure <<< next)
 
-interpret _ _ = R.lift S.get >>= (E.throwError <<< Tuple (error "Not implemented yet!") )
+interpret _ _ = E.throwError $ StringException $ error "Not implemented yet!"
 
-runBackend :: forall st rt eff a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT rt st (Tuple Error st) eff a
+runBackend :: forall st rt err a. BackendRuntime -> BackendFlow st rt err a -> InterpreterMT rt st (BackendException err) a
 runBackend backendRuntime = foldFree (\(BackendFlowWrapper x) -> runExists (interpret backendRuntime) x)
