@@ -34,7 +34,7 @@ import Data.Time.Duration (Milliseconds, Seconds)
 import Effect (Effect)
 import Effect.Aff (Aff, Error, error)
 import Foreign (Foreign)
-import Foreign.Generic (class Decode, class Encode)
+import Foreign.Class (class Decode, class Encode)
 import Presto.Backend.DB (bCreate', create, createWithOpts, delete, findAll, findAndCountAll, findOne, update) as DB
 import Presto.Core.Types.API (class RestEndpoint, Headers)
 import Presto.Core.Types.Language.APIInteract (apiInteract)
