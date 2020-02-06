@@ -23,7 +23,7 @@ module Presto.Backend.Interpreter where
 
 import Prelude
 
-import Cache (SetOptions(..), SimpleConn, del, exists, expire, get, incr, publish, set, setMessageHandler, subscribe)
+import Cache (SetOptions(..), SimpleConn, del, exists, expire, get,getTTL, incr, publish, set, setMessageHandler, subscribe)
 import Cache.Hash (hget, hset)
 import Cache.List (lindex, lpop, rpush)
 import Cache.Multi (execMulti, expireMulti, getMulti, hgetMulti, hsetMulti, incrMulti, lindexMulti, lpopMulti, newMulti, publishMulti, rpushMulti, setMulti, subscribeMulti)
@@ -82,6 +82,8 @@ interpret _ (SetCache cacheConn key value next) = (R.lift $ S.lift $ E.lift $ vo
 interpret _ (SetCacheWithExpiry cacheConn key value ttl next) = (R.lift $ S.lift $ E.lift $ void <$> set cacheConn key value (Just ttl) NoOptions) >>= (pure <<< next)
 
 interpret _ (GetCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ get cacheConn key) >>= (pure <<< next)
+
+interpret _ (GetTTL cacheConn key next) = (R.lift $ S.lift $ E.lift $ getTTL cacheConn key) >>= (pure <<< next)
 
 interpret _ (KeyExistsCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ exists cacheConn key) >>= (pure <<< next)
 

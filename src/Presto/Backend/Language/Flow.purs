@@ -70,6 +70,7 @@ data BackendFlowCommands next st rt error s =
     | SetCache SimpleConn String String (Either Error Unit -> next)
     | SetCacheWithExpiry SimpleConn String String Milliseconds (Either Error Unit -> next)
     | GetCache SimpleConn String (Either Error (Maybe String) -> next)
+    | GetTTL SimpleConn String (Either Error (Maybe String) -> next)
     | KeyExistsCache SimpleConn String (Either Error Boolean -> next)
     | DelCache SimpleConn String (Either Error Int -> next)
     | Enqueue SimpleConn String String (Either Error Unit -> next)
@@ -233,6 +234,11 @@ getCacheInMulti key multi = wrap $ GetCacheInMulti key multi identity
 
 getCache :: forall st rt error. String -> String -> BackendFlow st rt error (Either Error (Maybe String))
 getCache cacheName key = do
+  cacheConn <- getCacheConn cacheName
+  wrap $ GetCache cacheConn key identity
+
+getTTL :: forall st rt error. String -> String -> BackendFlow st rt error (Either Error (Maybe String))
+getTTL cacheName key = do
   cacheConn <- getCacheConn cacheName
   wrap $ GetCache cacheConn key identity
 

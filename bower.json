@@ -30,7 +30,7 @@
   "dependencies": {
     "purescript-sequelize": "https://github.com/juspay/purescript-sequelize.git#compiler/0.12",
     "purescript-body-parser": "https://github.com/juspay/purescript-body-parser.git#0.12.upgrade",
-    "purescript-redis": "https://github.com/NikithShetty/purescript-redis.git#feature/redis-bindings",
+    "purescript-redis": "https://github.com/NikithShetty/purescript-redis.git#feature/extra-functions",
     "purescript-uuid": "^6.0.0",
     "purescript-node-process": "^7.0.0",
     "purescript-now": "^4.0.0",
