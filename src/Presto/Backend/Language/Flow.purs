@@ -240,7 +240,7 @@ getCache cacheName key = do
 getTTL :: forall st rt error. String -> String -> BackendFlow st rt error (Either Error (Maybe String))
 getTTL cacheName key = do
   cacheConn <- getCacheConn cacheName
-  wrap $ GetCache cacheConn key identity
+  wrap $ GetTTL cacheConn key identity
 
 keyExistsCache :: forall st rt error. String -> String -> BackendFlow st rt error (Either Error Boolean)
 keyExistsCache cacheName key = do
